@@ -23,10 +23,13 @@ export async function handleLabelAction(
     let labels: string[] = [];
 
     if (context.payload.label && context.payload.label.name) {
+        // Single label event.
         labels.push(context.payload.label.name);
     } else if (context.payload.issue && Array.isArray(context.payload.issue.labels)) {
+        // For issues, use the array of labels.
         labels = context.payload.issue.labels.map((l: any) => l.name);
     } else if (context.payload.pull_request && Array.isArray(context.payload.pull_request.labels)) {
+        // For pull requests, use the array of labels.
         labels = context.payload.pull_request.labels.map((l: any) => l.name);
     } else {
         console.warn("No label information found in payload.");
@@ -83,8 +86,22 @@ export async function handleLabelAction(
                         console.log(`[Action] Commented on issue/PR #${issue_number} due to label "${label}".`);
                     }
                 } else if (action === 'merge') {
-                    await octokit.pulls.merge({ owner, repo, pull_number: issue_number });
-                    console.log(`[Action] Merged pull request #${issue_number} due to label "${label}".`);
+                    if (!context.payload.pull_request) {
+                        console.warn('Merge action invoked on a non-pull request event.');
+                        return;
+                    }
+
+                    console.log(`Attempting to merge pull request #${issue_number} for label "${label}"...`);
+
+                    try {
+                        const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: issue_number });
+                        console.log(`PR mergeable status: ${pr.mergeable}`, pr);
+
+                        const mergeResponse = await octokit.pulls.merge({ owner, repo, pull_number: issue_number });
+                        console.log(`[Action] Merge response for PR #${issue_number}:`, mergeResponse.data);
+                    } catch (error: any) {
+                        console.error(`Error merging pull request #${issue_number}: ${error.message}`);
+                    }
                 } else {
                     console.warn(`Unsupported action "${action}" for label "${label}".`);
                 }
