@@ -153,18 +153,24 @@ export default {
                 signature: signature,
             });
 
-            const owner = payload.repository.owner.login;
-            const repo = payload.repository.name;
+            let octokit: Octokit;
+            if (name === 'ping') {
+                octokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
+                console.log('Received ping event. Webhook is healthy.');
+            } else {
+                const owner = payload.repository.owner.login;
+                const repo = payload.repository.name;
 
-            const appOctokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
+                const appOctokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
 
-            const installationResponse = await appOctokit.apps.getRepoInstallation({ owner, repo });
-            const installationId = installationResponse.data.id;
+                const installationResponse = await appOctokit.apps.getRepoInstallation({ owner, repo });
+                const installationId = installationResponse.data.id;
 
-            const installationAuth = await appAuth({ type: 'installation', installationId });
-            const installationToken = installationAuth.token;
+                const installationAuth = await appAuth({ type: 'installation', installationId });
+                const installationToken = installationAuth.token;
 
-            const octokit = new Octokit({ auth: installationToken });
+                octokit = new Octokit({ auth: installationToken });
+            }
 
             const eventHandlers: { [key: string]: (context: any, octokit: Octokit, botConfig: any) => Promise<void> } = {
                 'issues.labeled': handleLabelAction,
@@ -174,6 +180,7 @@ export default {
                 'pull_request_review_comment.created': handleCommentAction,
                 'pull_request.synchronize': handlePullRequestSynchronize,
                 'issues.closed': handleClosedAction,
+                'ping': async (context, octokit, botConfig) => {},
             };
 
             const handler = eventHandlers[name];
