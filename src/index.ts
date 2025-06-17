@@ -154,22 +154,34 @@ export default {
             });
 
             let octokit: Octokit;
-            if (name === 'ping') {
+
+            const hasRepository = (payload as any).repository && (payload as any).repository.owner && (payload as any).repository.name;
+
+            if (name === 'ping' || !hasRepository) {
                 octokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
-                console.log('Received ping event. Webhook is healthy.');
+                if (name === 'ping') {
+                    console.log('Received ping event. Webhook is healthy.');
+                } else {
+                    console.log(`Received event '${name}' without repository context. Authenticating as app.`);
+                }
             } else {
-                const owner = payload.repository.owner.login;
-                const repo = payload.repository.name;
+                const owner = (payload as any).repository.owner.login;
+                const repo = (payload as any).repository.name;
 
-                const appOctokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
+                try {
+                    const appOctokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
+                    const installationResponse = await appOctokit.apps.getRepoInstallation({ owner, repo });
+                    const installationId = installationResponse.data.id;
 
-                const installationResponse = await appOctokit.apps.getRepoInstallation({ owner, repo });
-                const installationId = installationResponse.data.id;
+                    const installationAuth = await appAuth({ type: 'installation', installationId });
+                    const installationToken = installationAuth.token;
 
-                const installationAuth = await appAuth({ type: 'installation', installationId });
-                const installationToken = installationAuth.token;
-
-                octokit = new Octokit({ auth: installationToken });
+                    octokit = new Octokit({ auth: installationToken });
+                    console.log(`Authenticated as installation #${installationId} for ${owner}/${repo}.`);
+                } catch (installError: any) {
+                    console.error(`Error getting installation token for ${owner}/${repo}:`, installError.message);
+                    throw new Error(`Failed to authenticate as installation for ${owner}/${repo}: ${installError.message}`);
+                }
             }
 
             const eventHandlers: { [key: string]: (context: any, octokit: Octokit, botConfig: any) => Promise<void> } = {
@@ -180,14 +192,14 @@ export default {
                 'pull_request_review_comment.created': handleCommentAction,
                 'pull_request.synchronize': handlePullRequestSynchronize,
                 'issues.closed': handleClosedAction,
-                'ping': async (context, octokit, botConfig) => {},
+                'ping': async () => { },
             };
 
             const handler = eventHandlers[name];
             if (handler) {
                 ctx.waitUntil(handler({ id, name, payload }, octokit, botConfig));
             } else {
-                console.log(`No specific handler for event: ${name}`);
+                console.log(`No specific handler found for event: ${name}`);
             }
 
             return new Response('OK', { status: 200 });
