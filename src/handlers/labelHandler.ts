@@ -1,8 +1,11 @@
 // src/handlers/labelHandler.ts
 // hope that params and the description of functions will help yall!!
 import { Octokit } from '@octokit/rest';
-import ms from 'ms';
+// @ts-ignore
+import msImport from 'ms';
 import { replaceVars, getRepoAndIssueData } from '../utils/githubUtils';
+
+const ms = msImport as unknown as (value: string) => number;
 
 /**
  * Handles actions triggered by labels being added to issues or pull requests.
@@ -23,7 +26,7 @@ export async function handleLabelAction(context: any, octokit: Octokit, botConfi
     const { action, delay = botConfig.default?.[typeof config === 'string' ? config : config.action]?.delay || '0s', comment, message } =
         typeof config === 'string' ? { action: config } : config;
 
-    const wait = typeof delay === 'string' ? ms(delay) : delay; // convert delay string to milliseconds
+    const wait = ms(typeof delay === 'string' ? delay : String(delay)) ?? 0;
 
     console.log(`[+] Scheduled ${action} for label "${label}" in ${wait}ms`);
 

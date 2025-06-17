@@ -1,8 +1,10 @@
 // src/handlers/closedHandler.ts
 // hope that params and the description of functions will help yall!!
 import { Octokit } from '@octokit/rest';
-import ms from 'ms';
+import msImport from 'ms';
 import { getRepoAndIssueData } from '../utils/githubUtils';
+
+const ms = msImport as unknown as (value: string) => number;
 
 /**
  * Handles actions triggered after an issue or pull request is closed.
@@ -23,7 +25,7 @@ export async function handleClosedAction(context: any, octokit: Octokit, botConf
     if (botConfig.closes && Array.isArray(botConfig.closes)) {
         for (const closeAction of botConfig.closes) {
             const delay = closeAction.delay || '0s';
-            const wait = typeof delay === 'string' ? ms(delay) : delay;
+            const wait = ms(typeof delay === 'string' ? delay : String(delay)) ?? 0;
 
             console.log(`[+] Scheduled ${closeAction.action} for issue/PR #${issue_number} in ${wait}ms.`);
 
