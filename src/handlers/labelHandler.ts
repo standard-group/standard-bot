@@ -87,7 +87,7 @@ export async function handleLabelAction(
                     }
                 } else if (action === 'merge') {
                     if (!context.payload.pull_request) {
-                        console.warn('Merge action invoked on a non-pull request event.');
+                        console.log('[Skip] Received `issues.labeled` but need `pull_request.labeled` for merge.');
                         return;
                     }
 
