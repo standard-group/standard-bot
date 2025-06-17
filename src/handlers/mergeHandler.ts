@@ -1,5 +1,5 @@
 // src/handlers/mergeHandler.ts
-// testing the merge
+// testing the merge new
 import { Octokit } from '@octokit/rest';
 import { getRepoAndIssueData } from '../utils/githubUtils';
 
