@@ -1,0 +1,85 @@
+default:
+  close:
+    delay: "3 days"
+    comment: "⚠️ This issue has been marked $LABEL and will be closed in $DELAY."
+labels:
+  duplicate:
+    action: close
+    delay: 15s
+    comment: "Duplicate issue created! Closing in $DELAY . . ."
+  invalid: close
+  stale: 
+    action: close
+    delay: 7 days
+    comment: false
+  snooze:
+    action: open
+    delay: 7 days
+  'merge when passing': merge
+  wontfix:
+    action: close
+    delay: 15s
+    comment: 'Issue was labeled as \`wontfix\`, since contributors/main'
+  approved: 
+    action: merge
+  'new contributor':
+    action: comment
+    delay: 5s
+    message: "Thanks for making your first contribution! :slightly_smiling_face:"
+  bug:
+    action: comment
+    delay: 5s
+    message: "Thanks for reporting this bug! Please wait until maintainer or contributors will help you. :bug:"
+  remind:
+    action: comment
+    delay: 1d
+    message: "You asked me to remind you about this $DELAY ago."
+  enhancement:
+    action: comment
+    delay: 5s
+    message: "Thank you for making an issue! If you have more something to say/add, please comment down below."
+  documentation:
+    action: comment
+    delay: 5s
+    message: "Thank you for contributing to the documentation! If you have more something to say/add, please comment down below."
+merges:
+  - action: delete_branch
+  - action: tag
+comments:
+  - action: label
+    pattern: /duplicate of/i
+    labels: 
+      - duplicate
+  - action: delete_comment
+    pattern: "$PROFANITY"
+  - action: label
+    pattern: /\\/remind/i
+    labels: 
+      - remind
+  - action: delete_comment
+    pattern: /\\/remind/i
+commits:
+  - action: label
+    pattern: /merge when passing/i
+    user: "maintainer"
+    labels: 
+      - merge when passing
+  - action: label
+    pattern: BREAKING CHANGE
+    labels: 
+      - Major Version
+  - action: label
+    pattern: /perf.+?:/
+    labels: 
+      - Major Version
+  - action: label
+    pattern: /feat.+?:/
+    labels: 
+      - Minor Version
+  - action: label
+    pattern: /fix.+?:/
+    labels: 
+      - Patch Version
+closes:
+  - action: lock
+    delay: 5s
