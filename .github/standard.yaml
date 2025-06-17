@@ -58,6 +58,8 @@ comments:
       - remind
   - action: delete_comment
     pattern: /\\/remind/i
+  - action: merge
+    pattern: /merge when passing/i
 commits:
   - action: label
     pattern: /merge when passing/i
