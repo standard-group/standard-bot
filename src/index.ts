@@ -140,15 +140,33 @@ export default {
             const webhooks = new Webhooks({ secret: WEBHOOK_SECRET });
 
             const rawBody = await request.text();
-            const payload = JSON.parse(rawBody);
 
+            const rawEventName = request.headers.get('x-github-event') || '';
             const id = request.headers.get('x-github-delivery') || '';
-            const name = request.headers.get('x-github-event') || '';
-            const signature = request.headers.get('x-hub-signature-256') || request.headers.get('x-hub-signature') || '';
+            const signature =
+                request.headers.get('x-hub-signature-256') ||
+                request.headers.get('x-hub-signature') ||
+                '';
+
+            let payload: any;
+            try {
+                payload = JSON.parse(rawBody);
+            } catch (parseError) {
+                console.error('Failed to parse payload:', parseError);
+                return new Response('Invalid JSON', { status: 400 });
+            }
+
+            let eventName = rawEventName;
+            if (
+                (rawEventName === 'issues' || rawEventName === 'pull_request') &&
+                payload.action
+            ) {
+                eventName = `${rawEventName}.${payload.action}`;
+            }
 
             await webhooks.verifyAndReceive({
                 id: id,
-                name: name,
+                name: eventName,
                 payload: rawBody,
                 signature: signature,
             });
@@ -157,9 +175,9 @@ export default {
 
             const hasRepository = (payload as any).repository && (payload as any).repository.owner && (payload as any).repository.name;
 
-            if (name === 'ping' || !hasRepository) {
+            if (eventName === 'ping' || !hasRepository) {
                 octokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
-                if (name === 'ping') {
+                if (eventName === 'ping') {
                     console.log('Received ping event. Webhook is healthy.');
                 } else {
                     console.log(`Received event '${name}' without repository context. Authenticating as app.`);
@@ -195,12 +213,13 @@ export default {
                 'ping': async () => { },
             };
 
-            const handler = eventHandlers[name];
+            const handler = eventHandlers[eventName];
             if (handler) {
-                ctx.waitUntil(handler({ id, name, payload }, octokit, botConfig));
+                ctx.waitUntil(handler({ id, name: eventName, payload }, octokit, botConfig));
             } else {
-                console.log(`No specific handler found for event: ${name}`);
+                console.log(`No specific handler found for event: ${eventName}`);
             }
+
 
             return new Response('OK', { status: 200 });
 
