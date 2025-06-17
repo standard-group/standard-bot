@@ -8,7 +8,10 @@ const ms = msImport as unknown as (value: string) => number;
 
 /**
  * Handles actions triggered by labels being added to issues or pull requests.
- * @param context The webhook context for 'issues.labeled' or 'pull_request.labeled' events.
+ * This updated version supports the scenario where multiple labels might be
+ * added at once by checking for an array of labels in the payload.
+ *
+ * @param context The webhook context for events like 'issues.labeled' or 'pull_request.labeled'.
  * @param octokit The Octokit instance for GitHub API interactions.
  * @param botConfig The bot's configuration object.
  */
@@ -17,63 +20,77 @@ export async function handleLabelAction(
     octokit: Octokit,
     botConfig: any
 ) {
-    let label: string = (context.payload as any).label?.name;
-    if (!label) {
-        console.log("No label found in webhook payload.");
+    let labels: string[] = [];
+
+    if (context.payload.label && context.payload.label.name) {
+        labels.push(context.payload.label.name);
+    } else if (context.payload.issue && Array.isArray(context.payload.issue.labels)) {
+        labels = context.payload.issue.labels.map((l: any) => l.name);
+    } else if (context.payload.pull_request && Array.isArray(context.payload.pull_request.labels)) {
+        labels = context.payload.pull_request.labels.map((l: any) => l.name);
+    } else {
+        console.warn("No label information found in payload.");
         return;
     }
 
-    label = label.toLowerCase();
-
-    const config = botConfig.labels?.[label];
-    if (!config) {
-        console.log(`No specific config for label "${label}".`);
-        return;
-    }
-
-    const { action, delay = botConfig.default?.[typeof config === 'string' ? config : config.action]?.delay || '0s', comment, message } =
-        typeof config === 'string' ? { action: config } : config;
-
-    const wait = ms(typeof delay === 'string' ? delay : String(delay)) ?? 0;
-
-    console.log(`[+] Scheduled ${action} for label "${label}" in ${wait}ms`);
-
-    await new Promise((resolve) => setTimeout(resolve, wait));
-
-    const owner = context.payload.repository?.owner?.login;
-    const repo = context.payload.repository?.name;
-    const issue_number = context.payload.issue?.number;
-
+    const { owner, repo, issue_number } = getRepoAndIssueData(context);
     if (!issue_number) {
-        console.warn(`Could not determine the issue/pull request number for label "${label}".`);
+        console.warn("Could not determine the issue/PR number.");
         return;
     }
 
-    try {
-        if (action === 'comment') {
-            const body = message || '';
-            if (body) {
-                const parsed = replaceVars(body, { DELAY: delay, LABEL: label });
-                await octokit.issues.createComment({ owner, repo, issue_number, body: parsed });
-                console.log(`[Action] Commented on issue/PR #${issue_number} due to label "${label}".`);
-            }
-        } else if (action === 'close') {
-            if (comment !== false) {
-                const body = replaceVars(comment || botConfig.default?.close?.comment, { DELAY: delay, LABEL: label });
-                await octokit.issues.createComment({ owner, repo, issue_number, body });
-            }
-            await octokit.issues.update({ owner, repo, issue_number, state: 'closed' });
-            console.log(`[Action] Closed issue/PR #${issue_number} due to label "${label}".`);
-        } else if (action === 'open') {
-            await octokit.issues.update({ owner, repo, issue_number, state: 'open' });
-            console.log(`[Action] Opened issue/PR #${issue_number} due to label "${label}".`);
-        } else if (action === 'merge') {
-            await octokit.pulls.merge({ owner, repo, pull_number: issue_number });
-            console.log(`[Action] Merged pull request #${issue_number} due to label "${label}".`);
-        } else {
-            console.warn(`Unsupported action "${action}" for label "${label}".`);
+    for (const rawLabel of labels) {
+        const label = rawLabel.toLowerCase();
+
+        const config = botConfig.labels?.[label];
+        if (!config) {
+            console.log(`No specific config for label "${label}".`);
+            continue;
         }
-    } catch (error: any) {
-        console.error(`Error handling label action for "${label}" on #${issue_number}:`, error.message);
+
+        const {
+            action,
+            delay = botConfig.default?.[typeof config === 'string' ? config : config.action]?.delay || '0s',
+            comment,
+            message
+        } =
+            typeof config === 'string' ? { action: config } : config;
+
+        const wait = ms(typeof delay === 'string' ? delay : String(delay)) ?? 0;
+        console.log(`[+] Scheduled ${action} for label "${label}" in ${wait}ms`);
+
+        (async () => {
+            await new Promise((resolve) => setTimeout(resolve, wait));
+            try {
+                if (action === 'close') {
+                    if (comment !== false) {
+                        const body = replaceVars(comment || botConfig.default?.close?.comment, {
+                            DELAY: delay,
+                            LABEL: label,
+                        });
+                        await octokit.issues.createComment({ owner, repo, issue_number, body });
+                    }
+                    await octokit.issues.update({ owner, repo, issue_number, state: 'closed' });
+                    console.log(`[Action] Closed issue/PR #${issue_number} due to label "${label}".`);
+                } else if (action === 'open') {
+                    await octokit.issues.update({ owner, repo, issue_number, state: 'open' });
+                    console.log(`[Action] Opened issue/PR #${issue_number} due to label "${label}".`);
+                } else if (action === 'comment') {
+                    const body = message || '';
+                    if (body) {
+                        const parsed = replaceVars(body, { DELAY: delay, LABEL: label });
+                        await octokit.issues.createComment({ owner, repo, issue_number, body: parsed });
+                        console.log(`[Action] Commented on issue/PR #${issue_number} due to label "${label}".`);
+                    }
+                } else if (action === 'merge') {
+                    await octokit.pulls.merge({ owner, repo, pull_number: issue_number });
+                    console.log(`[Action] Merged pull request #${issue_number} due to label "${label}".`);
+                } else {
+                    console.warn(`Unsupported action "${action}" for label "${label}".`);
+                }
+            } catch (error: any) {
+                console.error(`Error handling label action for "${label}" on #${issue_number}:`, error.message);
+            }
+        })();
     }
 }

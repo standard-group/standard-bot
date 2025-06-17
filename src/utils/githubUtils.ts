@@ -12,14 +12,25 @@ export function replaceVars(template: string, vars: Record<string, string>): str
 }
 
 /**
- * Extracts owner, repo, and issue/pull request number from the webhook context.
- * @param context The webhook context object.
- * @returns An object containing owner, repo, and issue_number (which can be a pull_number).
+ * Extracts repository and issue/PR number data from the webhook context.
+ * It checks both the `issue` and `pull_request` properties so that events on either work correctly.
+ *
+ * @param context - The webhook event context.
+ * @returns An object with { owner, repo, issue_number }.
  */
 export function getRepoAndIssueData(context: any) {
-    const owner = (context.payload as any).repository.owner.login;
-    const repo = (context.payload as any).repository.name;
-    // Prioritize pull request number if available, otherwise issue number
-    const issue_number = (context.payload as any).pull_request?.number || (context.payload as any).issue?.number;
+    const repository = context.payload.repository || {};
+    const owner = repository.owner && repository.owner.login;
+    const repo = repository.name;
+
+    let issue_number = undefined;
+    if (context.payload.issue && context.payload.issue.number) {
+        issue_number = context.payload.issue.number;
+    } else if (context.payload.pull_request && context.payload.pull_request.number) {
+        issue_number = context.payload.pull_request.number;
+    } else {
+        console.warn("Cannot determine issue/pull request number from payload:", context.payload);
+    }
+
     return { owner, repo, issue_number };
 }
