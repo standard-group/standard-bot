@@ -149,7 +149,7 @@ export default {
             await webhooks.verifyAndReceive({
                 id: id,
                 name: name,
-                payload: payload,
+                payload: rawBody,
                 signature: signature,
             });
 
