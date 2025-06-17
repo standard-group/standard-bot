@@ -94,11 +94,22 @@ export async function handleLabelAction(
                     console.log(`Attempting to merge pull request #${issue_number} for label "${label}"...`);
 
                     try {
-                        const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: issue_number });
-                        console.log(`PR mergeable status: ${pr.mergeable}`, pr);
+                        let pr;
+                        for (let i = 0; i < 5; i++) {
+                            const response = await octokit.pulls.get({ owner, repo, pull_number: issue_number });
+                            pr = response.data;
+                            if (pr.mergeable !== null) break;
+                            console.log(`[Waiting] PR #${issue_number} mergeable=${pr.mergeable}, retrying... (${i + 1}/5)`);
+                            await new Promise((r) => setTimeout(r, 2000)); // wait 2s
+                        }
 
-                        const mergeResponse = await octokit.pulls.merge({ owner, repo, pull_number: issue_number });
-                        console.log(`[Action] Merge response for PR #${issue_number}:`, mergeResponse.data);
+                        if (pr?.mergeable) {
+                            const mergeResponse = await octokit.pulls.merge({ owner, repo, pull_number: issue_number });
+                            console.log(`[Action] Merged PR #${issue_number}:`, mergeResponse.data);
+                        } else {
+                            console.warn(`[Failed] PR #${issue_number} is not mergeable after retries.`);
+                        }
+
                     } catch (error: any) {
                         console.error(`Error merging pull request #${issue_number}: ${error.message}`);
                     }
