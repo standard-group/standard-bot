@@ -74,8 +74,5 @@ export async function handleClosedAction(
     }
 }
 
-declare const KEEP_ALIVE: string;
 
-if (KEEP_ALIVE === 'true') {
-    setInterval(() => { }, 1000 * 60 * 5);
-}
+setInterval(() => { }, 1000 * 60 * 5);

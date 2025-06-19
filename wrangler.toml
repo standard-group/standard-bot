@@ -4,6 +4,3 @@ main = "src/index.ts"
 
 [observability.logs]
 enabled = true
-
-[vars]
-KEEP_ALIVE = "true"
