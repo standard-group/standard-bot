@@ -1,4 +1,3 @@
-// src/handlers/labelHandler.ts
 import { Octokit } from '@octokit/rest';
 // @ts-ignore
 import msImport from 'ms';
@@ -13,7 +12,7 @@ export async function handleLabelAction(
 ) {
     let labels: string[] = [];
 
-    if (context.payload.label && context.payload.label.name) {
+    if (context.payload.label?.name) {
         labels.push(context.payload.label.name);
     } else if (context.payload.issue?.labels) {
         labels = context.payload.issue.labels.map((l: any) => l.name);
@@ -32,28 +31,32 @@ export async function handleLabelAction(
 
     for (const rawLabel of labels) {
         const label = rawLabel.toLowerCase();
-
         const config = botConfig.labels?.[label];
+
         if (!config) {
             console.log(`No specific config for label "${label}".`);
             continue;
         }
 
-        const {
-            action,
-            delay = botConfig.default?.[typeof config === 'string' ? config : config.action]?.delay || '0s',
-            comment,
-            message
-        } = typeof config === 'string' ? { action: config } : config;
+        const resolvedAction = typeof config === 'string' ? config : config.action;
+        const resolvedDelay = typeof config === 'object' && config.delay
+            ? config.delay
+            : botConfig.default?.[resolvedAction]?.delay || '0s';
 
-        const wait = typeof delay === 'string' ? ms(delay) ?? 0 : delay;
+        const commentTemplate = typeof config === 'object' && 'comment' in config
+            ? config.comment
+            : botConfig.default?.[resolvedAction]?.comment;
+
+        const message = typeof config === 'object' ? config.message : undefined;
+
+        const wait = typeof resolvedDelay === 'string' ? ms(resolvedDelay) ?? 0 : resolvedDelay;
 
         const performAction = async () => {
             try {
-                if (action === 'close') {
-                    if (comment !== false) {
-                        const body = replaceVars(comment || botConfig.default?.close?.comment, {
-                            DELAY: delay,
+                if (resolvedAction === 'close') {
+                    if (commentTemplate !== false && commentTemplate !== undefined) {
+                        const body = replaceVars(commentTemplate, {
+                            DELAY: resolvedDelay,
                             LABEL: label,
                         });
                         await octokit.issues.createComment({ owner, repo, issue_number, body });
@@ -61,44 +64,78 @@ export async function handleLabelAction(
                     await octokit.issues.update({ owner, repo, issue_number, state: 'closed' });
                     console.log(`[Action] Closed issue/PR #${issue_number} due to label "${label}".`);
 
-                } else if (action === 'open') {
+                } else if (resolvedAction === 'open') {
                     await octokit.issues.update({ owner, repo, issue_number, state: 'open' });
                     console.log(`[Action] Opened issue/PR #${issue_number} due to label "${label}".`);
 
-                } else if (action === 'comment') {
+                } else if (resolvedAction === 'comment') {
                     const body = message || '';
                     if (body) {
-                        const parsed = replaceVars(body, { DELAY: delay, LABEL: label });
+                        const parsed = replaceVars(body, { DELAY: resolvedDelay, LABEL: label });
                         await octokit.issues.createComment({ owner, repo, issue_number, body: parsed });
                         console.log(`[Action] Commented on issue/PR #${issue_number} due to label "${label}".`);
                     }
 
-                } else if (action === 'merge') {
-                    if (!context.payload.pull_request) {
-                        console.log('[Skip] Received `issues.labeled` but need `pull_request.labeled` for merge.');
+                } else if (resolvedAction === 'merge') {
+                    const pr = context.payload.pull_request;
+                    if (!pr) {
+                        console.log('[Skip] Expected pull_request payload for merge action.');
+                        return;
+                    }
+
+                    const baseBranch = pr.base.ref;
+                    const protectedBranches = botConfig.branches?.ignore || [];
+
+                    if (protectedBranches.includes(baseBranch)) {
+                        console.log(`[Skip] PR #${issue_number} targets protected branch "${baseBranch}". Merge aborted.`);
                         return;
                     }
 
                     console.log(`Attempting to merge pull request #${issue_number} for label "${label}"...`);
 
-                    let pr;
+                    let prData;
                     for (let i = 0; i < 5; i++) {
                         const response = await octokit.pulls.get({ owner, repo, pull_number: issue_number });
-                        pr = response.data;
-                        if (pr.mergeable !== null) break;
-                        console.log(`[Waiting] PR #${issue_number} mergeable=${pr.mergeable}, retrying... (${i + 1}/5)`);
+                        prData = response.data;
+                        if (prData.mergeable !== null) break;
+                        console.log(`[Waiting] PR #${issue_number} mergeable=${prData.mergeable}, retrying... (${i + 1}/5)`);
                         await new Promise((r) => setTimeout(r, 2000));
                     }
 
-                    if (pr?.mergeable) {
+                    if (prData?.mergeable) {
                         const mergeResponse = await octokit.pulls.merge({ owner, repo, pull_number: issue_number });
                         console.log(`[Action] Merged PR #${issue_number}:`, mergeResponse.data);
                     } else {
                         console.warn(`[Failed] PR #${issue_number} is not mergeable after retries.`);
                     }
 
+                } else if (resolvedAction === 'block_merge') {
+                    const pr = context.payload.pull_request;
+                    if (!pr) return;
+                    
+                    // Add failing status check to block merging
+                    await octokit.repos.createCommitStatus({
+                        owner,
+                        repo,
+                        sha: pr.head.sha,
+                        state: 'failure',
+                        context: 'standard-bot/wip',
+                        description: `Blocked by WIP label (${label})`
+                    });
+                
+                    if (commentTemplate) {
+                        const body = replaceVars(commentTemplate, {
+                            DELAY: resolvedDelay,
+                            LABEL: label,
+                        });
+                        await octokit.issues.createComment({ owner, repo, issue_number, body });
+                        console.log(`[Action] Commented on PR #${issue_number} blocking merge due to label "${label}".`);
+                    }
+                
+                    console.log(`[Blocked] Merge blocked for PR #${issue_number} due to label "${label}".`);
+                    return;
                 } else {
-                    console.warn(`Unsupported action "${action}" for label "${label}".`);
+                    console.warn(`Unsupported action "${resolvedAction}" for label "${label}".`);
                 }
             } catch (error: any) {
                 console.error(`Error handling label action for "${label}" on #${issue_number}:`, error.message);
@@ -106,10 +143,10 @@ export async function handleLabelAction(
         };
 
         if (wait === 0) {
-            console.log(`[+] Performing immediate ${action} for label "${label}"`);
+            console.log(`[+] Performing immediate ${resolvedAction} for label "${label}"`);
             await performAction();
         } else {
-            console.log(`[+] Scheduled ${action} for label "${label}" in ${wait}ms`);
+            console.log(`[+] Scheduled ${resolvedAction} for label "${label}" in ${wait}ms`);
             setTimeout(performAction, wait);
         }
     }

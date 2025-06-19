@@ -14,39 +14,38 @@ const ms = msImport as unknown as (value: string) => number;
  */
 export async function handleClosedAction(context: any, octokit: Octokit, botConfig: any) {
     const { owner, repo, issue_number } = getRepoAndIssueData(context);
+    const payload = context.payload;
 
-    if (!issue_number) {
-        console.warn(`Could not find issue/pull request number for closed action.`);
-        return;
-    }
+    // Skip if not fully closed (e.g., draft PRs)
+    if (payload.issue?.state_reason !== 'completed' && 
+        payload.pull_request?.merged !== true) return;
 
-    console.log(`[+] Issue/PR #${issue_number} was closed. Checking closed actions.`);
+    for (const closeAction of botConfig.closes || []) {
+        if (closeAction.action !== 'lock') continue;
 
-    if (botConfig.closes && Array.isArray(botConfig.closes)) {
-        for (const closeAction of botConfig.closes) {
-            const delay = closeAction.delay || '0s';
-            const wait = ms(typeof delay === 'string' ? delay : String(delay)) ?? 0;
+        const delay = ms(closeAction.delay || '0s');
+        const comment = closeAction.comment;
 
-            console.log(`[+] Scheduled ${closeAction.action} for issue/PR #${issue_number} in ${wait}ms.`);
+        setTimeout(async () => {
+            try {
+                // 1. Lock first (more critical)
+                await octokit.issues.lock({ owner, repo, issue_number });
 
-            setTimeout(async () => {
-                try {
-                    if (closeAction.action === 'lock') {
-                        // lock the conversation on the issue/pull request
-                        await octokit.issues.lock({
-                            owner,
-                            repo,
-                            issue_number,
-                            lock_reason: 'resolved', // idk maybe change to the closed just closed not resolved
-                        });
-                        console.log(`[Action] Locked issue/PR #${issue_number}.`);
-                    } else {
-                        console.warn(`Unsupported close action "${closeAction.action}".`);
-                    }
-                } catch (error: any) {
-                    console.error(`Error handling close action for #${issue_number}:`, error.message);
+                // 2. Add comment if configured
+                if (comment) {
+                    await octokit.issues.createComment({
+                        owner, repo, issue_number,
+                        body: comment.replace('$DELAY', closeAction.delay)
+                    });
                 }
-            }, wait);
-        }
+
+                console.log(`[Locked] #${issue_number} after ${closeAction.delay}`);
+            } catch (error) {
+                const msg = (error instanceof Error) ? error.message : String(error);
+                console.error(`[Lock Failed] #${issue_number}:`, msg);
+                // Retry once after 1 min
+                setTimeout(() => octokit.issues.lock({ owner, repo, issue_number }), 60000);
+            }
+        }, delay);
     }
 }

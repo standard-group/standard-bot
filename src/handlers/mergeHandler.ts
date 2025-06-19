@@ -1,11 +1,10 @@
 // src/handlers/mergeHandler.ts
-// testing the merge new
 import { Octokit } from '@octokit/rest';
 import { getRepoAndIssueData } from '../utils/githubUtils';
 
 /**
  * Handles actions triggered by pull request closed events for merged PRs.
- * This handler looks up the “merges” configuration in the botConfig and performs
+ * This handler looks up the "merges" configuration in the botConfig and performs
  * actions like deleting the branch and/or creating a tag for the merged PR.
  *
  * @param context - The webhook context for 'pull_request.closed' events.
@@ -20,24 +19,62 @@ export async function handlePullRequestClosed(
     const payload = context.payload;
     const { owner, repo, issue_number } = getRepoAndIssueData(context);
 
-    // only proceed if the PR was merged
-    if (!payload.pull_request?.merged) {
+    const pr = payload.pull_request;
+    const wipPattern = /\bWIP\b/i;
+    if (pr && (wipPattern.test(pr.title) || pr.labels.some((l: any) => l.name.toLowerCase() === 'wip'))) {
+        console.log(`[Blocked] PR #${issue_number} has WIP marker. Merge actions aborted.`);
+        await octokit.repos.createCommitStatus({
+            owner,
+            repo,
+            sha: pr.head.sha,
+            state: 'failure',
+            context: 'standard-bot/wip',
+            description: `Blocked by WIP marker`
+        });
+        return; // Exit handler completely
+    }
+
+    if (!pr?.merged) {
         console.log(`PR #${issue_number} closed without merging. Skipping merge actions.`);
         return;
+    }
+    
+    const labels = payload.pull_request.labels?.map((l: any) => l.name.toLowerCase()) || [];
+    const blockedLabels = Object.entries(botConfig.labels || {})
+        .filter(([label, cfg]) => {
+            const action = typeof cfg === 'string' ? cfg : (cfg as any).action;
+            return action === 'block_merge' && labels.includes(label);
+        })
+        .map(([label]) => label);
+
+    if (blockedLabels.length > 0) {
+        console.log(`[Blocked] PR #${issue_number} has blocking labels: ${blockedLabels.join(', ')}. Merge actions aborted.`);
+        return;  // Do not proceed with post-merge actions (like branch deletion)
     }
 
     console.log(`[+] PR #${issue_number} was merged. Checking merge actions.`);
 
     if (botConfig.merges && Array.isArray(botConfig.merges)) {
-        // loop through each merge action specified in the configuration
         for (const mergeAction of botConfig.merges) {
             if (mergeAction.action === 'delete_branch') {
                 const branch = payload.pull_request.head.ref;
-                // make sure we don't try to delete the base branch
+
+                // Don't delete base branch
                 if (branch === payload.pull_request.base.ref) {
                     console.log(`Skipping deletion of base branch "${branch}" for PR #${issue_number}.`);
                     continue;
                 }
+
+                // Skip protected branches
+                const protectedPatterns = mergeAction.unless?.branches ?? [];
+                const isProtected = protectedPatterns.some((pattern: string) =>
+                    new RegExp(`^${pattern.replace(/\*/g, '.*')}$`).test(branch)
+                );
+                if (isProtected) {
+                    console.log(`[skip] Branch "${branch}" matches protected pattern. Skipping deletion.`);
+                    continue;
+                }
+
                 try {
                     await octokit.git.deleteRef({
                         owner,
@@ -54,10 +91,13 @@ export async function handlePullRequestClosed(
                     console.warn(`No merge commit sha found for PR #${issue_number}; cannot create tag.`);
                     continue;
                 }
-                // create a tag name using the PR number and the first 7 characters of the merge commit SHA
-                const tagName = `merged-${issue_number}-${mergeCommitSha.substring(0, 7)}`;
+
+                // Format date as YYYY-DD-MM
+                const now = new Date();
+                const tagName = `${now.getFullYear()}-${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-m-${issue_number}`;
+
                 try {
-                    const now = new Date().toISOString();
+                    const iso = now.toISOString();
                     await octokit.git.createTag({
                         owner,
                         repo,
@@ -66,9 +106,9 @@ export async function handlePullRequestClosed(
                         object: mergeCommitSha,
                         type: 'commit',
                         tagger: {
-                            name: 'github-bot',
-                            email: 'bot@example.com',
-                            date: now,
+                            name: 'standard-github-robot',
+                            email: 'bot@standardgroup.dedyn.io',
+                            date: iso,
                         },
                     });
                     await octokit.git.createRef({

@@ -2,13 +2,14 @@ default:
   close:
     delay: "3 days"
     comment: "⚠️ This issue has been marked $LABEL and will be closed in $DELAY."
+
 labels:
   duplicate:
     action: close
     delay: 15s
     comment: "Duplicate issue created! Closing in $DELAY . . ."
   invalid: close
-  stale: 
+  stale:
     action: close
     delay: 7 days
     comment: false
@@ -19,7 +20,7 @@ labels:
   wontfix:
     action: close
     delay: 15s
-    comment: 'Issue was labeled as \`wontfix\`, since contributors/main'
+    comment: 'Issue was labeled as `wontfix`, since contributors/main'
   approved: 
     action: merge
   'new contributor':
@@ -42,9 +43,25 @@ labels:
     action: comment
     delay: 5s
     message: "Thank you for contributing to the documentation! If you have more something to say/add, please comment down below."
+  abandoned:
+    action: close
+    delay: 60d
+    comment: "This PR has been inactive for 60 days and is now closed. If you're still working on it, feel free to reopen."
+  wip:
+    action: block_merge
+    comment: "⛔ This PR is marked as Work In Progress. Please remove 'WIP' from the title to enable merge."
+
 merges:
   - action: delete_branch
+    unless:
+      branches:
+        - main
+        - master
+        - release/.*
+        - protected/.*
+        - dev
   - action: tag
+
 comments:
   - action: label
     pattern: /duplicate of/i
@@ -60,6 +77,27 @@ comments:
     pattern: /\\/remind/i
   - action: merge
     pattern: /merge when passing/i
+  - action: comment
+    pattern: /\\/check-status/i
+    message: "✅ Checking status... please wait while I ping CI or reviewers."
+  - action: comment
+    pattern: /\\/ping-bot/i
+    message: "👋 I'm here and working fine!"
+  - action: reopen
+    pattern: /\\/reopen/i
+  - action: close
+    pattern: /\\/close/i
+  - action: assign
+    pattern: /\\/assign @(\w+)/i
+    assignee: "$1"
+  - action: comment
+    pattern: /ready for review/i
+    message: "🔍 This PR is now ready for review! Maintainers, please take a look."
+  - action: label
+    pattern: /\bWIP\b/i
+    labels:
+      - wip
+
 commits:
   - action: label
     pattern: /merge when passing/i
@@ -82,6 +120,17 @@ commits:
     pattern: /fix.+?:/
     labels: 
       - Patch Version
+
 closes:
   - action: lock
     delay: 5s
+    comment: "🔒 Locked as resolved/inactive. Feel free to reopen or create a new issue if needed."
+
+branches:
+  ignore:
+    - bot/.*
+    - ci/.*
+    - dev
+    - main
+    - master
+    - trunk
