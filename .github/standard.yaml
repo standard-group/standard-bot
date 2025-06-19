@@ -123,7 +123,6 @@ commits:
 
 closes:
   - action: lock
-    delay: 5s
     comment: "🔒 Locked as resolved/inactive. Feel free to reopen or create a new issue if needed."
 
 branches:
