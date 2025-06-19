@@ -38,7 +38,7 @@ export async function handlePullRequestClosed(
         console.log(`PR #${issue_number} closed without merging. Skipping merge actions.`);
         return;
     }
-    
+
     const labels = payload.pull_request.labels?.map((l: any) => l.name.toLowerCase()) || [];
     const blockedLabels = Object.entries(botConfig.labels || {})
         .filter(([label, cfg]) => {

@@ -112,7 +112,7 @@ export async function handleLabelAction(
                 } else if (resolvedAction === 'block_merge') {
                     const pr = context.payload.pull_request;
                     if (!pr) return;
-                    
+
                     // Add failing status check to block merging
                     await octokit.repos.createCommitStatus({
                         owner,
@@ -122,7 +122,7 @@ export async function handleLabelAction(
                         context: 'standard-bot/wip',
                         description: `Blocked by WIP label (${label})`
                     });
-                
+
                     if (commentTemplate) {
                         const body = replaceVars(commentTemplate, {
                             DELAY: resolvedDelay,
@@ -131,7 +131,7 @@ export async function handleLabelAction(
                         await octokit.issues.createComment({ owner, repo, issue_number, body });
                         console.log(`[Action] Commented on PR #${issue_number} blocking merge due to label "${label}".`);
                     }
-                
+
                     console.log(`[Blocked] Merge blocked for PR #${issue_number} due to label "${label}".`);
                     return;
                 } else {

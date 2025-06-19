@@ -23,9 +23,9 @@ export async function handleClosedAction(
     const payload = context.payload;
 
     // 1. Verify closed state
-    if (!issue_number || 
-        (payload.issue?.state !== 'closed' && 
-         payload.pull_request?.state !== 'closed')) {
+    if (!issue_number ||
+        (payload.issue?.state !== 'closed' &&
+            payload.pull_request?.state !== 'closed')) {
         return;
     }
 
@@ -34,8 +34,8 @@ export async function handleClosedAction(
         for (const closeAction of botConfig.closes) {
             if (closeAction.action !== 'lock') continue;
 
-            const delay = typeof closeAction.delay === 'string' 
-                ? ms(closeAction.delay) 
+            const delay = typeof closeAction.delay === 'string'
+                ? ms(closeAction.delay)
                 : closeAction.delay || 0;
 
             console.log(`[Lock] Scheduling for #${issue_number} in ${delay}ms`);
@@ -49,7 +49,7 @@ export async function handleClosedAction(
             const timeout = setTimeout(async () => {
                 try {
                     console.log(`[Lock] Attempting to lock #${issue_number}`);
-                    
+
                     await octokit.issues.lock({ owner, repo, issue_number });
                     console.log(`[Lock] Successfully locked #${issue_number}`);
 
@@ -74,6 +74,8 @@ export async function handleClosedAction(
     }
 }
 
-if (process.env.KEEP_ALIVE) {
-    setInterval(() => {}, 1000 * 60 * 5);
+declare const KEEP_ALIVE: string;
+
+if (KEEP_ALIVE === 'true') {
+    setInterval(() => { }, 1000 * 60 * 5);
 }
