@@ -121,9 +121,9 @@ commits:
     labels: 
       - Patch Version
 
-closes:
-  - action: lock
-    comment: "🔒 Locked as resolved/inactive. Feel free to reopen or create a new issue if needed."
+# closes:
+#  - action: lock
+#    comment: "🔒 Locked as resolved/inactive. Feel free to reopen or create a new issue if needed."
 
 branches:
   ignore:

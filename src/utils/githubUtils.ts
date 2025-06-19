@@ -7,8 +7,11 @@
  * @param vars An object mapping placeholder keys to their replacement values.
  * @returns The string with placeholders replaced.
  */
-export function replaceVars(template: string, vars: Record<string, string>): string {
-    return template.replace(/\$(\w+)/g, (_, key) => vars[key] || '');
+export function replaceVars(
+  template: string,
+  vars: Record<string, string>
+): string {
+  return template.replace(/\$(\w+)/g, (_, key) => vars[key] || "");
 }
 
 /**
@@ -19,18 +22,24 @@ export function replaceVars(template: string, vars: Record<string, string>): str
  * @returns An object with { owner, repo, issue_number }.
  */
 export function getRepoAndIssueData(context: any) {
-    const repository = context.payload.repository || {};
-    const owner = repository.owner && repository.owner.login;
-    const repo = repository.name;
+  const repository = context.payload.repository || {};
+  const owner = repository.owner && repository.owner.login;
+  const repo = repository.name;
 
-    let issue_number = undefined;
-    if (context.payload.issue && context.payload.issue.number) {
-        issue_number = context.payload.issue.number;
-    } else if (context.payload.pull_request && context.payload.pull_request.number) {
-        issue_number = context.payload.pull_request.number;
-    } else {
-        console.warn("Cannot determine issue/pull request number from payload:", context.payload);
-    }
+  let issue_number = undefined;
+  if (context.payload.issue && context.payload.issue.number) {
+    issue_number = context.payload.issue.number;
+  } else if (
+    context.payload.pull_request &&
+    context.payload.pull_request.number
+  ) {
+    issue_number = context.payload.pull_request.number;
+  } else {
+    console.warn(
+      "Cannot determine issue/pull request number from payload:",
+      context.payload
+    );
+  }
 
-    return { owner, repo, issue_number };
+  return { owner, repo, issue_number };
 }

@@ -92,34 +92,55 @@ export async function handlePullRequestClosed(
                     continue;
                 }
 
-                // Format date as YYYY-DD-MM
-                const now = new Date();
-                const tagName = `${now.getFullYear()}-${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-m-${issue_number}`;
+                // NEW: Get commit message from PR title
+                const commitMessage = pr.title;
+                
+                // NEW: Support multiple tag patterns
+                const tagPatterns = Array.isArray(mergeAction.pattern)
+                    ? mergeAction.pattern
+                    : [mergeAction.pattern || '{date}-m-{pr_number}'];
 
-                try {
-                    const iso = now.toISOString();
-                    await octokit.git.createTag({
-                        owner,
-                        repo,
-                        tag: tagName,
-                        message: `Tag created for merged PR #${issue_number}`,
-                        object: mergeCommitSha,
-                        type: 'commit',
-                        tagger: {
-                            name: 'standard-github-robot',
-                            email: 'bot@standardgroup.dedyn.io',
-                            date: iso,
-                        },
-                    });
-                    await octokit.git.createRef({
-                        owner,
-                        repo,
-                        ref: `refs/tags/${tagName}`,
-                        sha: mergeCommitSha,
-                    });
-                    console.log(`[Action] Created tag "${tagName}" for merged PR #${issue_number}.`);
-                } catch (err: any) {
-                    console.error(`Error creating tag for PR #${issue_number}: ${err.message}`);
+                for (const pattern of tagPatterns) {
+                    // Format date components
+                    const now = new Date();
+                    const year = now.getFullYear();
+                    const month = String(now.getMonth() + 1).padStart(2, '0');
+                    const day = String(now.getDate()).padStart(2, '0');
+
+                    // Generate tag name using pattern
+                    const tagName = pattern
+                        .replace('{date}', `${year}-${month}-${day}`)
+                        .replace('{year}', year)
+                        .replace('{month}', month)
+                        .replace('{day}', day)
+                        .replace('{pr_number}', issue_number);
+
+                    try {
+                        const iso = now.toISOString();
+                        await octokit.git.createTag({
+                            owner,
+                            repo,
+                            tag: tagName,
+                            // NEW: Use PR title as commit message
+                            message: commitMessage,
+                            object: mergeCommitSha,
+                            type: 'commit',
+                            tagger: {
+                                name: 'standard-github-robot',
+                                email: 'bot@standardgroup.dedyn.io',
+                                date: iso,
+                            },
+                        });
+                        await octokit.git.createRef({
+                            owner,
+                            repo,
+                            ref: `refs/tags/${tagName}`,
+                            sha: mergeCommitSha,
+                        });
+                        console.log(`[Action] Created tag "${tagName}" for merged PR #${issue_number}.`);
+                    } catch (err: any) {
+                        console.error(`Error creating tag "${tagName}" for PR #${issue_number}: ${err.message}`);
+                    }
                 }
             } else {
                 console.warn(`Unsupported merge action "${mergeAction.action}" for PR #${issue_number}.`);

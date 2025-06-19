@@ -1,15 +1,15 @@
 // src/index.ts
-import { Webhooks } from '@octokit/webhooks';
-import { Octokit } from '@octokit/rest';
-import { createAppAuth } from '@octokit/auth-app';
-import yaml from 'js-yaml';
-import ms from 'ms';
+import { Webhooks } from "@octokit/webhooks";
+import { Octokit } from "@octokit/rest";
+import { createAppAuth } from "@octokit/auth-app";
+import yaml from "js-yaml";
+import ms from "ms";
 
-import { handleLabelAction } from './handlers/labelHandler';
-import { handlePullRequestClosed } from './handlers/mergeHandler';
-import { handleCommentAction } from './handlers/commentHandler';
-import { handlePullRequestSynchronize } from './handlers/commitHandler';
-import { handleClosedAction } from './handlers/closedHandler';
+import { handleLabelAction } from "./handlers/labelHandler";
+import { handlePullRequestClosed } from "./handlers/mergeHandler";
+import { handleCommentAction } from "./handlers/commentHandler";
+import { handlePullRequestSynchronize } from "./handlers/commitHandler";
+import { handleClosedAction } from "./handlers/closedHandler";
 
 const STANDARD_YAML_CONFIG = `
 default:
@@ -102,10 +102,10 @@ closes:
 let botConfig: any = {};
 try {
   botConfig = yaml.load(STANDARD_YAML_CONFIG);
-  console.log('Bot configuration loaded successfully from inlined YAML.');
+  console.log("Bot configuration loaded successfully from inlined YAML.");
 } catch (err) {
   console.error(`Failed to parse inlined config: ${err}`);
-  throw new Error('Failed to load bot configuration.');
+  throw new Error("Failed to load bot configuration.");
 }
 
 /**
@@ -117,9 +117,16 @@ try {
  * @param ctx The execution context for the Worker, used for `waitUntil`.
  */
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (request.method !== 'POST' || new URL(request.url).pathname !== '/webhook') {
-      return new Response('Not Found', { status: 404 });
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<Response> {
+    if (
+      request.method !== "POST" ||
+      new URL(request.url).pathname !== "/webhook"
+    ) {
+      return new Response("Not Found", { status: 404 });
     }
 
     try {
@@ -128,8 +135,10 @@ export default {
       const WEBHOOK_SECRET = env.WEBHOOK_SECRET;
 
       if (!GITHUB_APP_ID || !GITHUB_APP_PRIVATE_KEY || !WEBHOOK_SECRET) {
-        console.error('Missing required environment variables (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, or WEBHOOK_SECRET).');
-        return new Response('Server Configuration Error', { status: 500 });
+        console.error(
+          "Missing required environment variables (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, or WEBHOOK_SECRET)."
+        );
+        return new Response("Server Configuration Error", { status: 500 });
       }
 
       const appAuth = createAppAuth({
@@ -141,24 +150,24 @@ export default {
 
       const rawBody = await request.text();
 
-      const rawEventName = request.headers.get('x-github-event') || '';
-      const id = request.headers.get('x-github-delivery') || '';
+      const rawEventName = request.headers.get("x-github-event") || "";
+      const id = request.headers.get("x-github-delivery") || "";
       const signature =
-        request.headers.get('x-hub-signature-256') ||
-        request.headers.get('x-hub-signature') ||
-        '';
+        request.headers.get("x-hub-signature-256") ||
+        request.headers.get("x-hub-signature") ||
+        "";
 
       let payload: any;
       try {
         payload = JSON.parse(rawBody);
       } catch (parseError) {
-        console.error('Failed to parse payload:', parseError);
-        return new Response('Invalid JSON', { status: 400 });
+        console.error("Failed to parse payload:", parseError);
+        return new Response("Invalid JSON", { status: 400 });
       }
 
       let eventName = rawEventName;
       if (
-        (rawEventName === 'issues' || rawEventName === 'pull_request') &&
+        (rawEventName === "issues" || rawEventName === "pull_request") &&
         payload.action
       ) {
         eventName = `${rawEventName}.${payload.action}`;
@@ -173,58 +182,86 @@ export default {
 
       let octokit: Octokit;
 
-      const hasRepository = (payload as any).repository && (payload as any).repository.owner && (payload as any).repository.name;
+      const hasRepository =
+        (payload as any).repository &&
+        (payload as any).repository.owner &&
+        (payload as any).repository.name;
 
-      if (eventName === 'ping' || !hasRepository) {
-        octokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
-        if (eventName === 'ping') {
-          console.log('Received ping event. Webhook is healthy.');
+      if (eventName === "ping" || !hasRepository) {
+        octokit = new Octokit({
+          authStrategy: createAppAuth,
+          auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY },
+        });
+        if (eventName === "ping") {
+          console.log("Received ping event. Webhook is healthy.");
         } else {
-          console.log(`Received event '${name}' without repository context. Authenticating as app.`);
+          console.log(
+            `Received event '${name}' without repository context. Authenticating as app.`
+          );
         }
       } else {
         const owner = (payload as any).repository.owner.login;
         const repo = (payload as any).repository.name;
 
         try {
-          const appOctokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY } });
-          const installationResponse = await appOctokit.apps.getRepoInstallation({ owner, repo });
+          const appOctokit = new Octokit({
+            authStrategy: createAppAuth,
+            auth: { appId: GITHUB_APP_ID, privateKey: GITHUB_APP_PRIVATE_KEY },
+          });
+          const installationResponse =
+            await appOctokit.apps.getRepoInstallation({ owner, repo });
           const installationId = installationResponse.data.id;
 
-          const installationAuth = await appAuth({ type: 'installation', installationId });
+          const installationAuth = await appAuth({
+            type: "installation",
+            installationId,
+          });
           const installationToken = installationAuth.token;
 
           octokit = new Octokit({ auth: installationToken });
-          console.log(`Authenticated as installation #${installationId} for ${owner}/${repo}.`);
+          console.log(
+            `Authenticated as installation #${installationId} for ${owner}/${repo}.`
+          );
         } catch (installError: any) {
-          console.error(`Error getting installation token for ${owner}/${repo}:`, installError.message);
-          throw new Error(`Failed to authenticate as installation for ${owner}/${repo}: ${installError.message}`);
+          console.error(
+            `Error getting installation token for ${owner}/${repo}:`,
+            installError.message
+          );
+          throw new Error(
+            `Failed to authenticate as installation for ${owner}/${repo}: ${installError.message}`
+          );
         }
       }
 
-      const eventHandlers: { [key: string]: (context: any, octokit: Octokit, botConfig: any) => Promise<void> } = {
-        'issues.labeled': handleLabelAction,
-        'pull_request.labeled': handleLabelAction,
-        'pull_request.closed': handlePullRequestClosed,
-        'issue_comment.created': handleCommentAction,
-        'pull_request_review_comment.created': handleCommentAction,
-        'pull_request.synchronize': handlePullRequestSynchronize,
-        'issues.closed': handleClosedAction,
-        'ping': async () => { },
+      const eventHandlers: {
+        [key: string]: (
+          context: any,
+          octokit: Octokit,
+          botConfig: any
+        ) => Promise<void>;
+      } = {
+        "issues.labeled": handleLabelAction,
+        "pull_request.labeled": handleLabelAction,
+        "pull_request.closed": handlePullRequestClosed,
+        "issue_comment.created": handleCommentAction,
+        "pull_request_review_comment.created": handleCommentAction,
+        "pull_request.synchronize": handlePullRequestSynchronize,
+        "issues.closed": handleClosedAction,
+        ping: async () => {},
       };
 
       const handler = eventHandlers[eventName];
       if (handler) {
-        ctx.waitUntil(handler({ id, name: eventName, payload }, octokit, botConfig));
+        ctx.waitUntil(
+          handler({ id, name: eventName, payload }, octokit, botConfig)
+        );
       } else {
         console.log(`No specific handler found for event: ${eventName}`);
       }
 
-
-      return new Response('OK', { status: 200 });
-
+      return new Response("OK", { status: 200 });
     } catch (err: any) {
-      console.error('Webhook processing error:', err.message);
+      console.error("Webhook processing error:", err.message);
       return new Response(`Webhook Error: ${err.message}`, { status: 500 });
     }
   },
