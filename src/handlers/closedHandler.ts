@@ -72,7 +72,8 @@ export async function handleClosedAction(
             pendingLocks.set(issue_number, timeout);
         }
     }
+
+    setInterval(() => { }, 1000 * 60 * 5);
 }
 
 
-setInterval(() => { }, 1000 * 60 * 5);
