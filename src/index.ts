@@ -244,6 +244,7 @@ export default {
         "pull_request.labeled": handleLabelAction,
         "pull_request.closed": handlePullRequestClosed,
         "issue_comment.created": handleCommentAction,
+        "issue_comment": handleCommentAction,
         "pull_request_review_comment.created": handleCommentAction,
         "pull_request.synchronize": handlePullRequestSynchronize,
         "issues.closed": handleClosedAction,
